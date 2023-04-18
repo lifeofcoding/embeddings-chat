@@ -2,7 +2,7 @@ import Head from "next/head";
 import { useState } from "react";
 import { PGChunk } from "../types";
 import endent from "endent";
-import { fetchEventSource } from "@microsoft/fetch-event-source";
+// import { fetchEventSource } from "@microsoft/fetch-event-source";
 import { Answer } from "@/components/Answer";
 
 export default function Home() {
@@ -38,40 +38,85 @@ export default function Home() {
       ${results.map((chunk) => chunk.content).join("\n")}
     `;
 
-    const ctrl = new AbortController();
-    let ans = "";
-    const answerResponse = await fetchEventSource("/api/answer", {
+    const answerResponse = await fetch("/api/answer", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ prompt, history }),
-      signal: ctrl.signal,
-      onerror(err) {
-        console.error(err);
-      },
-      onmessage: (event) => {
-        if (event.data === "[DONE]") {
-          ctrl.abort();
-
-          setHistory((prev) => {
-            return [
-              ...prev.slice(0, 3),
-              { role: "user", content: query },
-              { role: "assistant", content: ans },
-            ];
-          });
-        } else {
-          setLoading(false);
-          const data = JSON.parse(event.data);
-          if (!data || !data.data) {
-            return;
-          }
-          ans += data.data;
-          setAnswer((prev) => prev + data.data);
-        }
-      },
     });
+
+    if (!answerResponse.ok) {
+      setLoading(false);
+      throw new Error(answerResponse.statusText);
+    }
+
+    const data = answerResponse.body;
+
+    if (!data) {
+      return;
+    }
+
+    setLoading(false);
+
+    const reader = data.getReader();
+    const decoder = new TextDecoder();
+    let done = false;
+    let response = "";
+
+    while (!done) {
+      const { value, done: doneReading } = await reader.read();
+      done = doneReading;
+      const chunkValue = decoder.decode(value);
+      response += chunkValue;
+      setAnswer((prev) => {
+        console.log("chunk", chunkValue);
+        return prev + chunkValue;
+      });
+    }
+
+    setHistory((prev) => {
+      return [
+        ...prev.slice(-4),
+        { role: "user", content: query },
+        { role: "assistant", content: response },
+      ];
+    });
+
+    // const ctrl = new AbortController();
+    // let ans = "";
+    // const answerResponse = await fetchEventSource("/api/answer", {
+    //   method: "POST",
+    //   headers: {
+    //     "Content-Type": "application/json",
+    //   },
+    //   body: JSON.stringify({ prompt, history }),
+    //   signal: ctrl.signal,
+    //   onerror(err) {
+    //     console.error(err);
+    //   },
+    //   onmessage: (event) => {
+    //     if (event.data === "[DONE]") {
+    //       ctrl.abort();
+
+    //       setHistory((prev) => {
+    //         return [
+    //           ...prev.slice(-4),
+    //           { role: "user", content: query },
+    //           { role: "assistant", content: ans },
+    //         ];
+    //       });
+    //     } else {
+    //       setLoading(false);
+    //       const data = JSON.parse(event.data);
+    //       if (!data || !data.data) {
+    //         return;
+    //       }
+    //       ans += data.data;
+    //       setAnswer((prev) => prev + data.data);
+    //     }
+    //   },
+    // });
   };
   return (
     <>
