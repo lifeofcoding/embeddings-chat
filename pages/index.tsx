@@ -56,7 +56,7 @@ export default function Home() {
 
           setHistory((prev) => {
             return [
-              ...prev,
+              ...prev.slice(0, 3),
               { role: "user", content: query },
               { role: "assistant", content: ans },
             ];
